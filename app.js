@@ -24,8 +24,11 @@ const app = express();
 config({ path: "./config/.env" });
 
 /* ✅ IMPROVED CORS CONFIGURATION */
-const allowedOrigins = process.env.FRONTEND_URL 
-  ? process.env.FRONTEND_URL.split(",").map(s => s.trim()) 
+const allowedOrigins = process.env.FRONTEND_URL
+  ? process.env.FRONTEND_URL.split(",")
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(s => s.replace(/\/$/, '')) // remove trailing slash
   : [];
 
 const corsOptions = {
@@ -41,12 +44,19 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // For development: allow localhost and 127.0.0.1 with any port
+    // For development: allow localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x and 172.16-31.x.x with any port
     if (process.env.NODE_ENV !== 'production') {
       const localhostPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
-      const localIPPattern = /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/;
-      
-      if (localhostPattern.test(origin) || localIPPattern.test(origin)) {
+      const local192Pattern = /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/;
+      const local10Pattern = /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/;
+      const local172Pattern = /^https?:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$/;
+
+      if (
+        localhostPattern.test(origin) ||
+        local192Pattern.test(origin) ||
+        local10Pattern.test(origin) ||
+        local172Pattern.test(origin)
+      ) {
         console.log(`✅ CORS allowed (dev): ${origin}`);
         return callback(null, true);
       }
