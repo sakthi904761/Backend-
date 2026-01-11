@@ -29,7 +29,7 @@ config({ path: "./config/.env" });
 /* ✅ MIDDLEWARES */
 app.use(
   cors({
-    origin: [process.env.FRONTEND_URL],
+    origin: process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : '*',
     methods: ["GET", "POST", "PUT", "DELETE"],
   })
 );
@@ -39,6 +39,11 @@ app.use(express.urlencoded({ extended: true }));
 
 /* ✅ ROUTES */
 app.use("/api/teacher", teacherRoutes);
+
+// Root health route
+app.get('/', (req, res) => {
+  res.send('API is running');
+});
 
 app.use("/api/v1/students", studentRouter);
 app.use("/api/v1/teachers", teacherRouter);
