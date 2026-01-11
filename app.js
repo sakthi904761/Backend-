@@ -38,10 +38,30 @@ const corsOptions = {
       return callback(null, true);
     }
 
-    // Check if origin is in allowed list or if wildcard is enabled
+    // Exact match or wildcard
     if (allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
-      console.log(`✅ CORS allowed: ${origin}`);
+      console.log(`✅ CORS allowed (exact): ${origin}`);
       return callback(null, true);
+    }
+
+    // Try hostname-based match to allow different ports (e.g., allowed "http://10.143.52.77" should allow "http://10.143.52.77:4173")
+    try {
+      const reqUrl = new URL(origin);
+      for (const allowed of allowedOrigins) {
+        try {
+          const allowedUrl = new URL(allowed);
+          if (allowedUrl.hostname === reqUrl.hostname && allowedUrl.protocol === reqUrl.protocol) {
+            console.log(`✅ CORS allowed (hostname match): ${origin} matches ${allowed}`);
+            return callback(null, true);
+          }
+        } catch (e) {
+          // allowed may not be a full URL; skip
+        }
+      }
+    } catch (e) {
+      // malformed origin header; block
+      console.warn(`⚠️  Malformed origin header: ${origin}`);
+      return callback(new Error('Not allowed by CORS'));
     }
 
     // For development: allow localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x and 172.16-31.x.x with any port
@@ -103,6 +123,15 @@ app.get('/health', (req, res) => {
   res.json({ 
     status: 'healthy',
     environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Debug endpoint to return origin headers (helpful when testing from another device)
+app.get('/debug/origin', (req, res) => {
+  res.json({
+    originHeader: req.headers.origin || null,
+    host: req.headers.host || null,
+    ip: req.ip || null
   });
 });
 
