@@ -27,9 +27,13 @@ const app = express();
 config({ path: "./config/.env" });
 
 /* ✅ MIDDLEWARES */
+// Configure CORS to accept a comma-separated list in FRONTEND_URL
+const allowedOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",").map(s => s.trim()) : ['*'];
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : '*',
+    origin: allowedOrigins,
+    credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE"],
   })
 );
