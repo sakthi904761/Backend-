@@ -27,16 +27,35 @@ const app = express();
 config({ path: "./config/.env" });
 
 /* ✅ MIDDLEWARES */
-// Configure CORS to accept a comma-separated list in FRONTEND_URL
-const allowedOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",").map(s => s.trim()) : ['*'];
+// Configure CORS to accept a comma-separated list in FRONTEND_URL and log decisions
+const allowedOrigins = process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",").map(s => s.trim()) : [];
 
-app.use(
-  cors({
-    origin: allowedOrigins,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE"],
-  })
-);
+const corsOptions = {
+  origin: function (origin, callback) {
+    // origin === undefined for non-browser requests (curl, server-to-server)
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    if (allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
+      console.log(`CORS allow: ${origin}`);
+      return callback(null, true);
+    }
+
+    console.warn(`CORS blocked: ${origin}. Allowed: ${allowedOrigins.join(",")}`);
+    return callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+};
+
+app.use((req, res, next) => {
+  // attach a small helper so we can see incoming origin header quickly in logs
+  req._requestOrigin = req.headers.origin || 'no-origin';
+  next();
+});
+
+app.use(cors(corsOptions));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
