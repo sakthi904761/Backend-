@@ -23,7 +23,7 @@ import emailRoutes from "./router/email.routes.js";
 const app = express();
 config({ path: "./config/.env" });
 
-/* ✅ IMPROVED CORS CONFIGURATION */
+/* ✅ UNIVERSAL CORS CONFIGURATION - WORKS ON ALL DEVICES */
 const allowedOrigins = process.env.FRONTEND_URL
   ? process.env.FRONTEND_URL.split(",")
       .map(s => s.trim())
@@ -31,107 +31,144 @@ const allowedOrigins = process.env.FRONTEND_URL
       .map(s => s.replace(/\/$/, '')) // remove trailing slash
   : [];
 
+console.log('🔒 CORS Configuration Loaded:');
+console.log('   Allowed Origins:', allowedOrigins);
+console.log('   Environment:', process.env.NODE_ENV || 'development');
+
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, Postman)
+    // Allow requests with no origin (mobile apps, Postman, server-to-server)
     if (!origin) {
+      console.log('✅ CORS allowed: No origin header (mobile/native app)');
       return callback(null, true);
     }
 
-    // Exact match or wildcard
-    if (allowedOrigins.includes("*") || allowedOrigins.includes(origin)) {
-      console.log(`✅ CORS allowed (exact): ${origin}`);
+    // Remove trailing slash from origin for comparison
+    const cleanOrigin = origin.replace(/\/$/, '');
+
+    // Check for wildcard
+    if (allowedOrigins.includes("*")) {
+      console.log(`✅ CORS allowed: ${origin} (wildcard enabled)`);
       return callback(null, true);
     }
 
-    // Try hostname-based match to allow different ports (e.g., allowed "http://10.143.52.77" should allow "http://10.143.52.77:4173")
+    // Exact match check
+    if (allowedOrigins.includes(cleanOrigin)) {
+      console.log(`✅ CORS allowed (exact match): ${origin}`);
+      return callback(null, true);
+    }
+
+    // Hostname-based match (allows different ports)
     try {
-      const reqUrl = new URL(origin);
+      const originUrl = new URL(origin);
       for (const allowed of allowedOrigins) {
         try {
           const allowedUrl = new URL(allowed);
-          if (allowedUrl.hostname === reqUrl.hostname && allowedUrl.protocol === reqUrl.protocol) {
-            console.log(`✅ CORS allowed (hostname match): ${origin} matches ${allowed}`);
+          if (allowedUrl.hostname === originUrl.hostname && 
+              allowedUrl.protocol === originUrl.protocol) {
+            console.log(`✅ CORS allowed (hostname match): ${origin} ≈ ${allowed}`);
             return callback(null, true);
           }
         } catch (e) {
-          // allowed may not be a full URL; skip
+          // Skip malformed URLs in config
         }
       }
     } catch (e) {
-      // malformed origin header; block
-      console.warn(`⚠️  Malformed origin header: ${origin}`);
-      return callback(new Error('Not allowed by CORS'));
+      console.warn(`⚠️  Malformed origin: ${origin}`);
     }
 
-    // For development: allow localhost, 127.0.0.1, 192.168.x.x, 10.x.x.x and 172.16-31.x.x with any port
-    if (process.env.NODE_ENV !== 'production') {
-      const localhostPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
-      const local192Pattern = /^https?:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/;
-      const local10Pattern = /^https?:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/;
-      const local172Pattern = /^https?:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}(:\d+)?$/;
+    // Always allow local network IPs (for development and testing)
+    const localhostPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+    const privateIPPattern = /^https?:\/\/(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})(:\d+)?$/;
 
-      if (
-        localhostPattern.test(origin) ||
-        local192Pattern.test(origin) ||
-        local10Pattern.test(origin) ||
-        local172Pattern.test(origin)
-      ) {
-        console.log(`✅ CORS allowed (dev): ${origin}`);
-        return callback(null, true);
-      }
+    if (localhostPattern.test(origin) || privateIPPattern.test(origin)) {
+      console.log(`✅ CORS allowed (local network): ${origin}`);
+      return callback(null, true);
     }
 
-    console.warn(`❌ CORS blocked: ${origin}. Allowed origins: ${allowedOrigins.join(", ")}`);
+    // Block everything else
+    console.warn(`❌ CORS BLOCKED: ${origin}`);
+    console.warn(`   Expected one of: ${allowedOrigins.join(", ")}`);
     return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+    "Access-Control-Request-Method",
+    "Access-Control-Request-Headers"
+  ],
   exposedHeaders: ["Content-Range", "X-Content-Range"],
-  maxAge: 86400 // 24 hours
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
-// Apply CORS middleware
+// Apply CORS before routes
 app.use(cors(corsOptions));
 
-// Handle preflight requests
+// Handle preflight for all routes
 app.options('*', cors(corsOptions));
 
-// Request logging middleware
+// Request logging
 app.use((req, res, next) => {
   const origin = req.headers.origin || 'no-origin';
-  console.log(`📥 ${req.method} ${req.path} from ${origin}`);
+  const timestamp = new Date().toISOString().substring(11, 19);
+  console.log(`[${timestamp}] 📥 ${req.method} ${req.path} from ${origin}`);
   next();
 });
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parsing
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 /* ✅ ROUTES */
 // Root health route
 app.get('/', (req, res) => {
-  res.json({ 
+  res.json({
     status: 'API is running',
     timestamp: new Date().toISOString(),
-    allowedOrigins: allowedOrigins
-  });
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'healthy',
+    version: '1.0.0',
+    allowedOrigins: allowedOrigins,
     environment: process.env.NODE_ENV || 'development'
   });
 });
 
-// Debug endpoint to return origin headers (helpful when testing from another device)
-app.get('/debug/origin', (req, res) => {
+// Detailed health check
+app.get('/health', (req, res) => {
   res.json({
-    originHeader: req.headers.origin || null,
+    status: 'healthy',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    cors: {
+      enabled: true,
+      allowedOrigins: allowedOrigins.length > 0 ? allowedOrigins : ['local IPs allowed']
+    }
+  });
+});
+
+// Test CORS endpoint
+app.get('/test-cors', (req, res) => {
+  res.json({
+    success: true,
+    message: 'CORS is working correctly!',
+    yourOrigin: req.headers.origin || 'no-origin',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Debug endpoint
+app.get('/debug/headers', (req, res) => {
+  res.json({
+    origin: req.headers.origin || null,
     host: req.headers.host || null,
-    ip: req.ip || null
+    userAgent: req.headers['user-agent'] || null,
+    ip: req.ip || req.connection.remoteAddress || null
   });
 });
 
@@ -150,6 +187,21 @@ app.use("/api/v1/users", usersRouter);
 app.use("/api/v1/register", adminRegisterRouter);
 app.use("/api/v1/email", emailRoutes);
 app.use("/api/v1/studentfees", studentFeesRouter);
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Not Found',
+    message: `Route ${req.method} ${req.path} not found`,
+    availableEndpoints: [
+      'GET /',
+      'GET /health',
+      'GET /test-cors',
+      'GET /debug/headers',
+      '/api/v1/*'
+    ]
+  });
+});
 
 /* ✅ ERROR HANDLER (LAST) */
 app.use(errorHandler);
