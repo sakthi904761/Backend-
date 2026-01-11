@@ -1,4 +1,6 @@
 
+import app from "./app.js";
+
 // Handle uncaught exceptions and unhandled rejections to surface errors
 process.on('uncaughtException', (err) => {
     console.error('Uncaught Exception:', err);
@@ -9,8 +11,6 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
     process.exit(1);
 });
-
-import app from "./app.js";
 
 const PORT = process.env.PORT || 5000;
 
